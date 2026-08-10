@@ -1,0 +1,55 @@
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.*
+!.env.example
+
+# Google OAuth tokens & credentials
+credentials.json
+token.json
+calendar_token.json
+
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# ========================
+# Logs
+# ========================
+logs/
+*.log
+
+# ========================
+# Alembic
+# ========================
+# Keep migrations but ignore local alembic.ini overrides
+# alembic/versions/ is intentionally tracked
+
+# ========================
+# Frontend
+# ========================
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+
+# ========================
+# IDE & OS
+# ========================
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
