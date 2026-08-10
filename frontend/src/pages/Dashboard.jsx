@@ -6,7 +6,7 @@ import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import Toast, { useToast } from '../components/Toast'
 
-const PIE_COLORS = ['#b9ce9c', '#8972b9', '#4a6490', '#243550', '#6a8fbf']
+const PIE_COLORS = ['#3fb4c6', '#54d0e3', '#86d8e4', '#5ab8c8', '#b3e8ef']
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
@@ -68,12 +68,12 @@ export default function Dashboard() {
                 <BarChart data={charts.emails_per_day}>
                   <defs>
                     <linearGradient id="barGradA" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#b9ce9c" />
-                      <stop offset="100%" stopColor="#8972b9" />
+                      <stop offset="0%" stopColor="#3fb4c6" />
+                      <stop offset="100%" stopColor="#86d8e4" />
                     </linearGradient>
                     <linearGradient id="barGradB" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#8972b9" />
-                      <stop offset="100%" stopColor="#354a6a" />
+                      <stop offset="0%" stopColor="#54d0e3" />
+                      <stop offset="100%" stopColor="#5ab8c8" />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
