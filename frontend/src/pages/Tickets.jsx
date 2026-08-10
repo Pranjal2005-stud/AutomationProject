@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { getTickets, getTicketJiraUrl } from '../api/services'
 import Badge from '../components/Badge'
+import Toast, { useToast } from '../components/Toast'
 
 export default function Tickets() {
   const [tickets, setTickets] = useState([])
+  const { toasts, toast, dismiss } = useToast()
 
   useEffect(() => {
     getTickets().then(r => setTickets(r.data))
@@ -14,38 +16,38 @@ export default function Tickets() {
       const r = await getTicketJiraUrl(id)
       window.open(r.data.url, '_blank')
     } catch {
-      alert('Could not get Jira URL')
+      toast('Could not get Jira URL', 'error')
     }
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <h2 className="text-xl font-bold text-gray-800">Jira Tickets</h2>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600 text-left">
+    <div className="p-6 space-y-4" style={{ background: 'var(--background)', minHeight: '100%' }}>
+      <h2 className="skeuo-page-title">Jira Tickets</h2>
+      <div className="skeuo-panel overflow-hidden">
+        <table className="skeuo-table">
+          <thead>
             <tr>
-              <th className="px-4 py-3">Jira Key</th>
-              <th className="px-4 py-3">Summary</th>
-              <th className="px-4 py-3">Priority</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3">Action</th>
+              <th>Jira Key</th>
+              <th>Summary</th>
+              <th>Priority</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {tickets.map(t => (
-              <tr key={t.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-mono font-semibold text-blue-600">{t.jira_key || '—'}</td>
-                <td className="px-4 py-3 text-gray-700 max-w-xs truncate">{t.summary}</td>
-                <td className="px-4 py-3"><Badge label={t.priority} /></td>
-                <td className="px-4 py-3 text-gray-600">{t.issue_type}</td>
-                <td className="px-4 py-3"><Badge label={t.status} /></td>
-                <td className="px-4 py-3 text-gray-500">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}</td>
-                <td className="px-4 py-3">
+              <tr key={t.id}>
+                <td className="mono">{t.jira_key || '—'}</td>
+                <td className="max-w-xs truncate">{t.summary}</td>
+                <td><Badge label={t.priority} /></td>
+                <td className="dim">{t.issue_type}</td>
+                <td><Badge label={t.status} /></td>
+                <td className="dim">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}</td>
+                <td>
                   {t.jira_key && (
-                    <button onClick={() => openJira(t.id)} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                    <button onClick={() => openJira(t.id)} className="skeuo-btn-sm" aria-label={`Open ${t.jira_key} in Jira`}>
                       Open in Jira
                     </button>
                   )}
@@ -55,6 +57,7 @@ export default function Tickets() {
           </tbody>
         </table>
       </div>
+      <Toast toasts={toasts} dismiss={dismiss} />
     </div>
   )
 }
