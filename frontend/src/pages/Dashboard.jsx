@@ -4,14 +4,16 @@ import { Mail, Ticket, CalendarDays, CheckCircle, Clock, Activity } from 'lucide
 import { getStats, getCharts, getRecent, pollGmail } from '../api/services'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
+import Toast, { useToast } from '../components/Toast'
 
-const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
+const PIE_COLORS = ['#b9ce9c', '#8972b9', '#4a6490', '#243550', '#6a8fbf']
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [charts, setCharts] = useState(null)
   const [recent, setRecent] = useState(null)
   const [polling, setPolling] = useState(false)
+  const { toasts, toast, dismiss } = useToast()
 
   useEffect(() => {
     getStats().then(r => setStats(r.data))
@@ -23,66 +25,85 @@ export default function Dashboard() {
     setPolling(true)
     try {
       const r = await pollGmail()
-      alert(`Poll complete: ${r.data.created} tickets created, ${r.data.fetched} emails fetched`)
+      toast(`Poll complete: ${r.data.created} tickets created, ${r.data.fetched} emails fetched`, 'success')
       getStats().then(r => setStats(r.data))
     } catch {
-      alert('Gmail poll failed — check credentials')
+      toast('Gmail poll failed — check credentials', 'error')
     } finally {
       setPolling(false)
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6" style={{ background: 'var(--background)', minHeight: '100%' }}>
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
+        <h2 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Dashboard</h2>
         <button
           onClick={handlePoll}
           disabled={polling}
-          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="skeuo-btn"
+          aria-label="Poll Gmail now"
         >
-          {polling ? 'Polling...' : '⟳ Poll Gmail Now'}
+          {polling ? 'Polling…' : '⟳ Poll Gmail Now'}
         </button>
       </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="Total Emails" value={stats?.total_emails} icon={Mail} color="blue" />
-        <StatCard title="Pending" value={stats?.pending_emails} icon={Clock} color="yellow" />
-        <StatCard title="Processed" value={stats?.processed_emails} icon={CheckCircle} color="green" />
-        <StatCard title="Tickets" value={stats?.tickets_created} icon={Ticket} color="purple" />
-        <StatCard title="Meetings" value={stats?.meetings_scheduled} icon={CalendarDays} color="indigo" />
-        <StatCard title="Today" value={stats?.todays_activity} icon={Activity} color="red" />
+        <StatCard title="Total Emails" value={stats?.total_emails} icon={Mail} />
+        <StatCard title="Pending" value={stats?.pending_emails} icon={Clock} />
+        <StatCard title="Processed" value={stats?.processed_emails} icon={CheckCircle} />
+        <StatCard title="Tickets" value={stats?.tickets_created} icon={Ticket} />
+        <StatCard title="Meetings" value={stats?.meetings_scheduled} icon={CalendarDays} />
+        <StatCard title="Today" value={stats?.todays_activity} icon={Activity} />
       </div>
 
       {/* Charts */}
       {charts && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Emails per Day</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={charts.emails_per_day}>
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="skeuo-panel">
+            <h3 className="skeuo-panel-title">Emails per Day</h3>
+            <div className="skeuo-panel-body">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={charts.emails_per_day}>
+                  <defs>
+                    <linearGradient id="barGradA" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#b9ce9c" />
+                      <stop offset="100%" stopColor="#8972b9" />
+                    </linearGradient>
+                    <linearGradient id="barGradB" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8972b9" />
+                      <stop offset="100%" stopColor="#354a6a" />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {charts.emails_per_day?.map((_, i) => (
+                      <Cell key={i} fill={i % 2 === 0 ? 'url(#barGradA)' : 'url(#barGradB)'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Tickets by Priority</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={charts.tickets_by_priority} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={80} label>
-                  {charts.tickets_by_priority.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="skeuo-panel">
+            <h3 className="skeuo-panel-title">Tickets by Priority</h3>
+            <div className="skeuo-panel-body">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={charts.tickets_by_priority} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={80} label>
+                    {charts.tickets_by_priority.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       )}
@@ -90,34 +111,34 @@ export default function Dashboard() {
       {/* Recent Activity */}
       {recent && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Emails</h3>
-            <div className="space-y-2">
+          <div className="skeuo-panel">
+            <h3 className="skeuo-panel-title">Recent Emails</h3>
+            <div className="skeuo-panel-body space-y-2">
               {recent.emails?.map(e => (
                 <div key={e.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 truncate max-w-[160px]">{e.subject || '(No Subject)'}</span>
+                  <span className="truncate max-w-[160px]" style={{ color: 'var(--text)' }}>{e.subject || '(No Subject)'}</span>
                   <Badge label={e.status} />
                 </div>
               ))}
             </div>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Tickets</h3>
-            <div className="space-y-2">
+          <div className="skeuo-panel">
+            <h3 className="skeuo-panel-title">Recent Tickets</h3>
+            <div className="skeuo-panel-body space-y-2">
               {recent.tickets?.map(t => (
                 <div key={t.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 font-mono">{t.jira_key || '—'}</span>
+                  <span className="font-mono" style={{ color: 'var(--text)' }}>{t.jira_key || '—'}</span>
                   <Badge label={t.priority} />
                 </div>
               ))}
             </div>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Meetings</h3>
-            <div className="space-y-2">
+          <div className="skeuo-panel">
+            <h3 className="skeuo-panel-title">Recent Meetings</h3>
+            <div className="skeuo-panel-body space-y-2">
               {recent.meetings?.map(m => (
                 <div key={m.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 truncate max-w-[160px]">{m.title}</span>
+                  <span className="truncate max-w-[160px]" style={{ color: 'var(--text)' }}>{m.title}</span>
                   <Badge label={m.status} />
                 </div>
               ))}
@@ -125,6 +146,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <Toast toasts={toasts} dismiss={dismiss} />
     </div>
   )
 }
