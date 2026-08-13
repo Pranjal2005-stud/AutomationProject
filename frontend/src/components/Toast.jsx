@@ -27,9 +27,9 @@ export function useToast() {
 export default function Toast({ toasts, dismiss }) {
   if (!toasts.length) return null
   return (
-    <div className="skeuo-toast-container" role="region" aria-live="polite" aria-label="Notifications">
+    <div className="nm-toast-container" role="region" aria-live="polite" aria-label="Notifications">
       {toasts.map(({ id, message, type }) => (
-        <div key={id} className={`skeuo-toast ${type}`} role="alert">
+        <div key={id} className={`nm-toast ${type}`} role="alert">
           {ICONS[type]}
           <span style={{ flex: 1 }}>{message}</span>
           <button className="toast-close" onClick={() => dismiss(id)} aria-label="Dismiss notification">
