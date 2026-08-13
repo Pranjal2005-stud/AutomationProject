@@ -622,7 +622,7 @@ select.nm-input option {
 
 /* ─── Recharts ──────────────────────────────────────────────────── */
 .recharts-cartesian-axis-tick text {
-  fill: var(--text-secondary) !important;
+  fill: var(--text-primary) !important;
   font-size: 11px;
   font-family: 'Melody', 'Inter', sans-serif;
 }
