@@ -43,7 +43,7 @@ def get_charts(db: Session = Depends(get_db)):
 @router.get("/recent")
 def get_recent(db: Session = Depends(get_db)):
     return {
-        "emails": EmailRepository(db).get_recent(5),
+        "emails": EmailRepository(db).get_recent(10),  # Show more recent emails
         "tickets": JiraTicketRepository(db).get_recent(5),
         "meetings": MeetingRepository(db).get_recent(5),
     }

@@ -105,7 +105,7 @@ class EmailProcessor:
                 log_repo.log("Jira", f"create_issue email_id={email.id}", "failed", str(e))
                 errors += 1
 
-        return {"fetched": fetched, "created": created, "skipped": skipped, "errors": errors}
+        return {"fetched": fetched, "processed": created, "filtered_out": fetched - len(raw_emails), "skipped": skipped, "errors": errors}
 
 
 email_processor = EmailProcessor()

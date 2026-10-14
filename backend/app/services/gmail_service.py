@@ -20,7 +20,44 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
 ]
 
-IGNORED_CATEGORIES = {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "SPAM"}
+IGNORED_CATEGORIES = {
+    "CATEGORY_PROMOTIONS", 
+    "CATEGORY_SOCIAL", 
+    "CATEGORY_UPDATES", 
+    "CATEGORY_FORUMS",
+    "SPAM",
+    "TRASH"
+}
+
+# Keywords that indicate important business emails that need tickets
+IMPORTANT_KEYWORDS = {
+    "urgent", "critical", "issue", "problem", "bug", "error", 
+    "support", "help", "assistance", "request", "complaint",
+    "escalation", "priority", "immediate", "asap", "emergency",
+    "meeting", "schedule", "appointment", "deadline",
+    "invoice", "payment", "billing", "contract", "proposal"
+}
+
+# Sender domains that are usually important
+IMPORTANT_DOMAINS = {
+    "company.com", "client.com", "customer.com",  # Add your actual domains
+    "noreply", "support", "admin", "sales", "team"
+}
+
+# Skip these common promotional senders and keywords
+SKIP_SENDERS = {
+    "marketing", "newsletter", "promotions", "deals", "offers",
+    "unsubscribe", "noreply", "notifications", "updates",
+    "facebook", "instagram", "twitter", "linkedin", "social",
+    "friend", "requests", "follow"
+}
+
+# Skip emails with these subjects/content
+SKIP_SUBJECTS = {
+    "friend request", "new friend", "follow", "like", "comment",
+    "sale", "offer", "deal", "discount", "promo", "newsletter",
+    "update", "notification", "reminder", "advertisement"
+}
 
 
 class GmailService:
@@ -56,6 +93,7 @@ class GmailService:
 
     def fetch_unread_emails(self, max_results: int = 20) -> List[dict]:
         try:
+            # Only fetch from INBOX and IMPORTANT labels, exclude promotional categories
             result = self.service.users().messages().list(
                 userId="me",
                 labelIds=["INBOX", "UNREAD"],
@@ -66,11 +104,46 @@ class GmailService:
             emails = []
             for msg in messages:
                 parsed = self._parse_message(msg["id"])
-                if parsed:
+                if parsed and self._is_important_email(parsed):
                     emails.append(parsed)
             return emails
         except HttpError as e:
             raise ExternalServiceException("Gmail", str(e))
+
+    def _is_important_email(self, email_data: dict) -> bool:
+        """Check if email is important enough to create a ticket"""
+        subject = email_data.get("subject", "").lower()
+        sender_email = email_data.get("sender_email", "").lower()
+        body = email_data.get("body", "").lower()
+        
+        # Skip promotional senders
+        for skip_word in SKIP_SENDERS:
+            if skip_word in sender_email or skip_word in subject:
+                logger.info(f"Skipping promotional sender/subject: {sender_email} | {subject}")
+                return False
+        
+        # Skip promotional subjects
+        for skip_subject in SKIP_SUBJECTS:
+            if skip_subject in subject:
+                logger.info(f"Skipping promotional subject: {subject}")
+                return False
+        
+        # Check for important keywords in subject or body
+        text_to_check = f"{subject} {body}"
+        for keyword in IMPORTANT_KEYWORDS:
+            if keyword in text_to_check:
+                logger.info(f"Important email found with keyword '{keyword}': {subject}")
+                return True
+        
+        # Check if sender is from important domains
+        for domain in IMPORTANT_DOMAINS:
+            if domain in sender_email:
+                logger.info(f"Important sender domain: {sender_email}")
+                return True
+        
+        # If it doesn't match important criteria, skip it
+        logger.info(f"Skipping non-important email: {subject} from {sender_email}")
+        return False
 
     def _parse_message(self, message_id: str) -> Optional[dict]:
         try:

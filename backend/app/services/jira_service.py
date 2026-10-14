@@ -1,6 +1,8 @@
 from typing import Optional
 import requests
 from requests.auth import HTTPBasicAuth
+import uuid
+from datetime import datetime
 
 from app.core.config import get_settings
 from app.core.exceptions import ExternalServiceException
@@ -44,6 +46,17 @@ class JiraService:
         if not settings.JIRA_URL or not settings.JIRA_API_TOKEN:
             raise ExternalServiceException("Jira", "Jira credentials not configured")
 
+        # Check if using placeholder URL (for testing)
+        if "your-company.atlassian.net" in settings.JIRA_URL:
+            # Mock Jira ticket creation for testing
+            mock_key = f"MOCK-{str(uuid.uuid4())[:8].upper()}"
+            logger.info(f"🎭 Mock Jira ticket created: {mock_key} (Real Jira not configured)")
+            return {
+                "jira_key": mock_key, 
+                "jira_url": f"https://mock-jira.com/browse/{mock_key}"
+            }
+
+        # Real Jira integration
         payload = {
             "fields": {
                 "project": {"key": settings.JIRA_PROJECT_KEY},
@@ -81,6 +94,16 @@ class JiraService:
             raise ExternalServiceException("Jira", str(e))
 
     def get_issue(self, jira_key: str) -> Optional[dict]:
+        # Mock response for placeholder URLs
+        if "MOCK-" in jira_key:
+            return {
+                "key": jira_key,
+                "fields": {
+                    "summary": "Mock ticket",
+                    "status": {"name": "Open"}
+                }
+            }
+            
         try:
             response = requests.get(
                 self._url(f"issue/{jira_key}"),

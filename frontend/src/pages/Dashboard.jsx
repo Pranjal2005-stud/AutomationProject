@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { Mail, Ticket, CalendarDays, CheckCircle, Clock, Activity, RefreshCw } from 'lucide-react'
+import { Mail, Ticket, CalendarDays, CheckCircle, Clock, Activity, RefreshCw, ChevronDown } from 'lucide-react'
 import { getStats, getCharts, getRecent, pollGmail } from '../api/services'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [recent, setRecent] = useState(null)
   const [polling, setPolling] = useState(false)
   const [countdown, setCountdown] = useState(300)
+  const [showAllEmails, setShowAllEmails] = useState(false)
   const { toasts, toast, dismiss } = useToast()
   const countdownRef = useRef(null)
 
@@ -174,6 +175,7 @@ export default function Dashboard() {
               items: recent.emails,
               left: e => e.subject || '(No Subject)',
               right: e => <Badge label={e.status} />,
+              showMore: true
             },
             {
               title: 'Recent Tickets',
@@ -181,33 +183,107 @@ export default function Dashboard() {
               left: t => <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--primary)', fontWeight: 500 }}>{t.jira_key || '—'}</span>,
               right: t => <Badge label={t.priority} />,
             },
-          ].map(({ title, items, left, right }) => (
-            <div key={title} className="nm-card">
-              <div className="nm-card-header">
-                <span className="nm-card-title">{title}</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {items?.map((item, i) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          ].map(({ title, items, left, right, showMore }) => {
+            const isEmails = title === 'Recent Emails'
+            const displayItems = isEmails && !showAllEmails ? items?.slice(0, 4) : items
+            const hasMoreItems = isEmails && items?.length > 4
+
+            return (
+              <div key={title} className="nm-card">
+                <div className="nm-card-header">
+                  <span className="nm-card-title">{title}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {displayItems?.map((item, i) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 20px',
+                        borderBottom: i < displayItems.length - 1 ? ROW_BORDER : (hasMoreItems && !showAllEmails ? ROW_BORDER : 'none'),
+                      }}
+                    >
+                      <span style={{
+                        fontSize: '0.8125rem', color: 'var(--text-primary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160
+                      }}>
+                        {left(item)}
+                      </span>
+                      {right(item)}
+                    </div>
+                  ))}
+                  
+                  {/* Show More Button for Emails */}
+                  {isEmails && hasMoreItems && !showAllEmails && (
+                    <div style={{
                       padding: '10px 20px',
-                      borderBottom: i < items.length - 1 ? ROW_BORDER : 'none',
-                    }}
-                  >
-                    <span style={{
-                      fontSize: '0.8125rem', color: 'var(--text-primary)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }}>
-                      {left(item)}
-                    </span>
-                    {right(item)}
-                  </div>
-                ))}
+                      <button 
+                        onClick={() => setShowAllEmails(true)}
+                        style={{
+                          background: 'rgba(253, 99, 15, 0.1)',
+                          border: '1px solid rgba(253, 99, 15, 0.3)',
+                          borderRadius: 6,
+                          padding: '6px 12px',
+                          color: '#FD630F',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.background = 'rgba(253, 99, 15, 0.15)'
+                          e.target.style.borderColor = 'rgba(253, 99, 15, 0.5)'
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.background = 'rgba(253, 99, 15, 0.1)'
+                          e.target.style.borderColor = 'rgba(253, 99, 15, 0.3)'
+                        }}
+                      >
+                        Show {items.length - 4} more
+                        <ChevronDown size={12} />
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Show Less Option */}
+                  {isEmails && showAllEmails && hasMoreItems && (
+                    <div style={{
+                      padding: '10px 20px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <button 
+                        onClick={() => setShowAllEmails(false)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: 6,
+                          padding: '6px 12px',
+                          color: 'rgba(255, 255, 255, 0.7)',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)'
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.05)'
+                        }}
+                      >
+                        Show less
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           <UpcomingMeetings />
         </div>
       )}

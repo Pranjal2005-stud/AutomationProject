@@ -6,7 +6,7 @@ from typing import Optional
 from groq import Groq
 
 from app.core.config import get_settings
-from app.core.exceptions import LLMParsingException
+from app.core.exceptions import LLMParsingException, ExternalServiceException
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,8 +90,5 @@ class LLMService:
 
         return data
 
-
-# Import fix — add missing import
-from app.core.exceptions import ExternalServiceException
 
 llm_service = LLMService()
