@@ -9,6 +9,7 @@ from app.api.dashboard_routes import router as dashboard_router
 from app.api.email_routes import router as email_router
 from app.api.gmail_routes import router as gmail_router
 from app.api.meeting_routes import router as meeting_router
+from app.api.team_routes import router as team_router
 from app.api.ticket_routes import router as ticket_router
 from app.core.exceptions import AppException
 from app.core.logging import get_logger
@@ -59,6 +60,7 @@ application.include_router(ticket_router)
 application.include_router(meeting_router)
 application.include_router(dashboard_router)
 application.include_router(gmail_router)
+application.include_router(team_router)
 application.include_router(logs_router)
 application.include_router(settings_router)
 

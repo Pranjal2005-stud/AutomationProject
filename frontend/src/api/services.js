@@ -23,6 +23,18 @@ export const getTicketJiraUrl = (id) => api.get(`/tickets/${id}/jira-url`)
 export const getMeetings = (params) => api.get('/meetings/', { params })
 export const getMeeting = (id) => api.get(`/meetings/${id}`)
 export const scheduleMeeting = (data) => api.post('/meetings/', data)
+export const getUpcomingMeetings = () => api.get('/meetings/upcoming')
+export const cancelMeeting = (id) => api.delete(`/meetings/${id}/cancel`)
+export const updateMeeting = (id, data) => api.put(`/meetings/${id}`, data)
+
+// Teams
+export const getTeams = () => api.get('/teams/')
+export const getTeam = (id) => api.get(`/teams/${id}`)
+export const createTeam = (data) => api.post('/teams/', data)
+export const updateTeam = (id, data) => api.put(`/teams/${id}`, data)
+export const deleteTeam = (id) => api.delete(`/teams/${id}`)
+export const addTeamMember = (teamId, data) => api.post(`/teams/${teamId}/members`, data)
+export const removeTeamMember = (teamId, memberId) => api.delete(`/teams/${teamId}/members/${memberId}`)
 
 // Gmail
 export const pollGmail = () => api.post('/gmail/poll')

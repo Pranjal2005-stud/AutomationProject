@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Mail, Ticket, CalendarDays, ScrollText, Settings, Zap, X } from 'lucide-react'
+import { LayoutDashboard, Mail, Ticket, CalendarDays, ScrollText, Settings, Zap, X, Users } from 'lucide-react'
 
 const links = [
   { to: '/',         label: 'Dashboard', icon: LayoutDashboard },
   { to: '/emails',   label: 'Emails',    icon: Mail },
   { to: '/tickets',  label: 'Tickets',   icon: Ticket },
   { to: '/meetings', label: 'Meetings',  icon: CalendarDays },
+  { to: '/teams',    label: 'Teams',     icon: Users },
   { to: '/logs',     label: 'Logs',      icon: ScrollText },
   { to: '/settings', label: 'Settings',  icon: Settings },
 ]

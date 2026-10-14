@@ -5,6 +5,7 @@ import { getStats, getCharts, getRecent, pollGmail } from '../api/services'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import Toast, { useToast } from '../components/Toast'
+import UpcomingMeetings from '../components/UpcomingMeetings'
 
 const CHART_COLORS = ['#FD630F', '#E6B428', '#43AB92', '#C0CB75', '#AAB4C2']
 
@@ -164,7 +165,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent Activity */}
+      {/* Recent Activity + Upcoming Meetings */}
       {recent && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {[
@@ -179,12 +180,6 @@ export default function Dashboard() {
               items: recent.tickets,
               left: t => <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--primary)', fontWeight: 500 }}>{t.jira_key || '—'}</span>,
               right: t => <Badge label={t.priority} />,
-            },
-            {
-              title: 'Recent Meetings',
-              items: recent.meetings,
-              left: m => m.title,
-              right: m => <Badge label={m.status} />,
             },
           ].map(({ title, items, left, right }) => (
             <div key={title} className="nm-card">
@@ -213,6 +208,7 @@ export default function Dashboard() {
               </div>
             </div>
           ))}
+          <UpcomingMeetings />
         </div>
       )}
 

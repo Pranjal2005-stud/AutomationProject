@@ -10,6 +10,7 @@ import Tickets from './pages/Tickets'
 import Meetings from './pages/Meetings'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
+import Teams from './pages/Teams'
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/emails" element={<Emails />} />
               <Route path="/tickets" element={<Tickets />} />
               <Route path="/meetings" element={<Meetings />} />
+              <Route path="/teams" element={<Teams />} />
               <Route path="/logs" element={<Logs />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

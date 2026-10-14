@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from google.auth.transport.requests import Request
@@ -55,23 +55,19 @@ class CalendarService:
         duration_minutes: int = 30,
         preferred_date: Optional[str] = None,
     ) -> Optional[datetime]:
-        """Find the first common free slot for all participants."""
         start_date = (
             datetime.strptime(preferred_date, "%Y-%m-%d")
             if preferred_date
             else datetime.utcnow().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
         )
 
-        # Check 5 business days
         for day_offset in range(5):
             check_date = start_date + timedelta(days=day_offset)
-            if check_date.weekday() >= 5:  # skip weekends
+            if check_date.weekday() >= 5:
                 continue
-
-            for hour in range(9, 17):  # 9am–5pm
+            for hour in range(9, 17):
                 slot_start = check_date.replace(hour=hour, minute=0, second=0, microsecond=0)
                 slot_end = slot_start + timedelta(minutes=duration_minutes)
-
                 if self._is_slot_free(participants, slot_start, slot_end):
                     return slot_start
 
@@ -93,7 +89,7 @@ class CalendarService:
             return True
         except Exception as e:
             logger.warning(f"Freebusy check failed: {e}")
-            return True  # assume free if check fails
+            return True
 
     def create_event(
         self,
@@ -128,9 +124,69 @@ class CalendarService:
                 .get("entryPoints", [{}])[0]
                 .get("uri", "")
             )
+            calendar_link = created.get("htmlLink", "")
             return {
                 "calendar_event_id": created["id"],
                 "meet_link": meet_link,
+                "calendar_link": calendar_link,
+                "meeting_date": start.strftime("%Y-%m-%d"),
+                "meeting_time": start.strftime("%H:%M"),
+            }
+        except HttpError as e:
+            raise ExternalServiceException("Google Calendar", str(e))
+
+    def cancel_event(self, calendar_event_id: str) -> bool:
+        """Cancel a Google Calendar event and notify attendees. Returns True on success."""
+        try:
+            self.service.events().delete(
+                calendarId=settings.GOOGLE_CALENDAR_ID,
+                eventId=calendar_event_id,
+                sendUpdates="all",
+            ).execute()
+            return True
+        except HttpError as e:
+            if e.resp.status == 404:
+                logger.warning(f"Calendar event {calendar_event_id} not found — treating as already deleted")
+                return True  # already gone, still sync DB
+            raise ExternalServiceException("Google Calendar", str(e))
+
+    def update_event(
+        self,
+        calendar_event_id: str,
+        title: str,
+        participants: List[str],
+        start: datetime,
+        duration_minutes: int = 30,
+    ) -> dict:
+        """Update an existing Google Calendar event in-place."""
+        end = start + timedelta(minutes=duration_minutes)
+        body = {
+            "summary": title,
+            "start": {"dateTime": start.isoformat() + "Z", "timeZone": "UTC"},
+            "end": {"dateTime": end.isoformat() + "Z", "timeZone": "UTC"},
+            "attendees": [{"email": e} for e in participants],
+        }
+        try:
+            updated = (
+                self.service.events()
+                .patch(
+                    calendarId=settings.GOOGLE_CALENDAR_ID,
+                    eventId=calendar_event_id,
+                    body=body,
+                    conferenceDataVersion=1,
+                    sendUpdates="all",
+                )
+                .execute()
+            )
+            meet_link = (
+                updated.get("conferenceData", {})
+                .get("entryPoints", [{}])[0]
+                .get("uri", "")
+            )
+            calendar_link = updated.get("htmlLink", "")
+            return {
+                "meet_link": meet_link,
+                "calendar_link": calendar_link,
                 "meeting_date": start.strftime("%Y-%m-%d"),
                 "meeting_time": start.strftime("%H:%M"),
             }
