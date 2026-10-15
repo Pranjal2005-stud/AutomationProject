@@ -12,6 +12,20 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+MEETING_NOTES_PROMPT = """You are an AI assistant summarizing a completed meeting.
+
+Meeting Title: {title}
+Date: {date} at {time}
+Duration: {duration} minutes
+Participants: {participants}
+
+Generate a concise meeting summary with:
+1. A 2-3 sentence overview of what the meeting was about
+2. Key discussion points (bullet list, max 5)
+3. Action items (bullet list, max 5, format: "- [Owner if known] Action")
+
+Keep it under 300 words. Plain text only, no markdown headers."""
+
 EXTRACTION_PROMPT = """You are an IT operations assistant. Analyze the email below and extract structured ticket information.
 
 Email Subject: {subject}
@@ -68,6 +82,23 @@ class LLMService:
             except Exception as e:
                 logger.error(f"Groq API error: {e}")
                 raise ExternalServiceException("Groq", str(e))
+
+    def generate_meeting_notes(self, title: str, date: str, time: str, duration: int, participants: list) -> str:
+        prompt = MEETING_NOTES_PROMPT.format(
+            title=title, date=date or 'Unknown', time=time or 'Unknown',
+            duration=duration, participants=', '.join(participants) if participants else 'Unknown'
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=600,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Meeting notes generation failed: {e}")
+            raise ExternalServiceException("Groq", str(e))
 
     def _parse_json(self, raw: str) -> dict:
         # Strip markdown code fences if present

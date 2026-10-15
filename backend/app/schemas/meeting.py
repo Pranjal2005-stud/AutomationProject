@@ -9,6 +9,7 @@ class MeetingCreate(BaseModel):
     team_ids: List[int] = []
     duration_minutes: int = 30
     preferred_date: Optional[str] = None  # YYYY-MM-DD
+    preferred_time: Optional[str] = None  # HH:MM
 
 
 class MeetingUpdate(BaseModel):
@@ -16,6 +17,7 @@ class MeetingUpdate(BaseModel):
     participants: Optional[List[str]] = None
     team_ids: Optional[List[int]] = None
     preferred_date: Optional[str] = None
+    preferred_time: Optional[str] = None
     duration_minutes: Optional[int] = None
 
 
@@ -31,6 +33,7 @@ class MeetingResponse(BaseModel):
     meet_link: Optional[str] = None
     calendar_link: Optional[str] = None
     status: str
+    notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

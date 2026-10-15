@@ -5,19 +5,22 @@ export const getStats = () => api.get('/dashboard/stats')
 export const getCharts = () => api.get('/dashboard/charts')
 export const getRecent = () => api.get('/dashboard/recent')
 
+export const getTickets = (params) => api.get('/tickets/', { params })
+export const getTicket = (id) => api.get(`/tickets/${id}`)
+export const createTicket = (data) => api.post('/tickets/', data)
+export const getTicketJiraUrl = (id) => api.get(`/tickets/${id}/jira-url`)
+export const syncTicketsFromJira = () => api.post('/tickets/sync')
+export const updateTicketPriority = (id, priority) => api.patch(`/tickets/${id}/priority`, { priority })
+export const getTicketHeatmap = (days = 14) => api.get('/tickets/priority-heatmap', { params: { days } })
+
 // Emails
 export const getEmails = (params) => api.get('/emails/', { params })
 export const getEmail = (id) => api.get(`/emails/${id}`)
 export const createEmail = (data) => api.post('/emails/', data)
 export const updateEmail = (id, data) => api.patch(`/emails/${id}`, data)
+export const deleteEmail = (id) => api.delete(`/emails/${id}`)
 export const createTicketForEmail = (id) => api.post(`/emails/${id}/create-ticket`)
 export const retryEmail = (id) => api.post(`/emails/${id}/retry`)
-
-// Tickets
-export const getTickets = (params) => api.get('/tickets/', { params })
-export const getTicket = (id) => api.get(`/tickets/${id}`)
-export const createTicket = (data) => api.post('/tickets/', data)
-export const getTicketJiraUrl = (id) => api.get(`/tickets/${id}/jira-url`)
 
 // Meetings
 export const getMeetings = (params) => api.get('/meetings/', { params })
@@ -26,6 +29,7 @@ export const scheduleMeeting = (data) => api.post('/meetings/', data)
 export const getUpcomingMeetings = () => api.get('/meetings/upcoming')
 export const cancelMeeting = (id) => api.delete(`/meetings/${id}/cancel`)
 export const updateMeeting = (id, data) => api.put(`/meetings/${id}`, data)
+export const generateMeetingNotes = (id) => api.post(`/meetings/${id}/generate-notes`)
 
 // Teams
 export const getTeams = () => api.get('/teams/')

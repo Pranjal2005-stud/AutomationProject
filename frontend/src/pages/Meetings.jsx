@@ -1,12 +1,89 @@
 import { useEffect, useState } from 'react'
-import { CalendarPlus, Video, X, Calendar, Clock, Users, MoreVertical } from 'lucide-react'
-import { getMeetings, scheduleMeeting, getTeams, cancelMeeting, getUpcomingMeetings } from '../api/services'
+import { CalendarPlus, Video, X, Calendar, Clock, Users, MoreVertical, RefreshCw, FileText } from 'lucide-react'
+import { getMeetings, scheduleMeeting, getTeams, cancelMeeting, getUpcomingMeetings, updateMeeting, generateMeetingNotes } from '../api/services'
 import Badge from '../components/Badge'
 import Toast, { useToast } from '../components/Toast'
 
 const ERR = { fontSize: '0.6875rem', color: 'var(--error)', marginTop: 5, fontWeight: 500 }
 const LABEL = { fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'block' }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// ─── Time Picker ─────────────────────────────────────────────────────────────
+const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'))
+const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
+
+function TimePicker({ value, onChange, hasError }) {
+  // value is "HH:MM" in 24h or ''
+  const toDisplay = (v) => {
+    if (!v) return { h: '', m: '00', ampm: 'AM' }
+    const [hh, mm] = v.split(':')
+    const h24 = parseInt(hh, 10)
+    const ampm = h24 >= 12 ? 'PM' : 'AM'
+    const h12 = h24 === 0 ? '12' : h24 > 12 ? String(h24 - 12).padStart(2, '0') : String(h24).padStart(2, '0')
+    return { h: h12, m: mm || '00', ampm }
+  }
+  const { h, m, ampm } = toDisplay(value)
+
+  const emit = (newH, newM, newAmpm) => {
+    if (!newH) { onChange(''); return }
+    let h24 = parseInt(newH, 10)
+    if (newAmpm === 'AM') { if (h24 === 12) h24 = 0 }
+    else { if (h24 !== 12) h24 += 12 }
+    onChange(`${String(h24).padStart(2, '0')}:${newM}`)
+  }
+
+  const seg = {
+    background: 'var(--surface-inset)',
+    border: `1px solid ${hasError ? 'var(--error)' : 'var(--border)'}`,
+    borderRadius: 8,
+    color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    fontFamily: 'inherit',
+    fontWeight: 500,
+    cursor: 'pointer',
+    outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    padding: '7px 6px',
+    textAlign: 'center',
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Hour */}
+      <select value={h} onChange={e => emit(e.target.value, m, ampm)} style={{ ...seg, width: 58 }}>
+        <option value="">--</option>
+        {HOURS.map(hv => <option key={hv} value={hv}>{hv}</option>)}
+      </select>
+      <span style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>:</span>
+      {/* Minute */}
+      <select value={m} onChange={e => emit(h, e.target.value, ampm)} style={{ ...seg, width: 58 }}>
+        {MINUTES.map(mv => <option key={mv} value={mv}>{mv}</option>)}
+      </select>
+      {/* AM/PM */}
+      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${hasError ? 'var(--error)' : 'var(--border)'}`, flexShrink: 0 }}>
+        {['AM', 'PM'].map(p => (
+          <button key={p} type="button" onClick={() => emit(h, m, p)} style={{
+            padding: '7px 10px', fontSize: '0.6875rem', fontWeight: 700, fontFamily: 'inherit',
+            border: 'none', cursor: 'pointer', letterSpacing: '0.04em',
+            background: ampm === p ? 'var(--primary)' : 'var(--surface-inset)',
+            color: ampm === p ? '#fff' : 'var(--text-muted)',
+            transition: 'all 150ms',
+          }}>{p}</button>
+        ))}
+      </div>
+      {/* Clear */}
+      {value && (
+        <button type="button" onClick={() => onChange('')} style={{
+          background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+          display: 'flex', alignItems: 'center', padding: 4, borderRadius: 6,
+        }}>
+          <X size={12} />
+        </button>
+      )}
+    </div>
+  )
+}
 
 function parseTeamNames(json) {
   if (!json) return null
@@ -50,6 +127,7 @@ function UpcomingKPI({ upcoming, loadingUpcoming, onCancelUpcoming }) {
   const [menuOpen, setMenuOpen] = useState(null)
   const [confirming, setConfirming] = useState(null)
   const [cancelling, setCancelling] = useState(false)
+  const [rescheduling, setRescheduling] = useState(null) // meeting object
 
   const handleCancel = async (id) => {
     setCancelling(true)
@@ -180,6 +258,12 @@ function UpcomingKPI({ upcoming, loadingUpcoming, onCancelUpcoming }) {
                           </a>
                         )}
                         <button
+                          onClick={() => { setMenuOpen(null); setRescheduling(m) }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px', fontSize: '0.6875rem', color: 'var(--secondary)', background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
+                        >
+                          <RefreshCw size={11} /> Reschedule
+                        </button>
+                        <button
                           onClick={() => { setMenuOpen(null); setConfirming(m.id) }}
                           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px', fontSize: '0.6875rem', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
                         >
@@ -220,6 +304,107 @@ function UpcomingKPI({ upcoming, loadingUpcoming, onCancelUpcoming }) {
           </div>
         </div>
       )}
+
+      {/* Reschedule modal (KPI card) */}
+      {rescheduling && (
+        <RescheduleModal
+          meeting={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onRescheduled={(updated) => {
+            setUpcoming(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m))
+            setRescheduling(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Reschedule Modal ────────────────────────────────────────────────────────
+function RescheduleModal({ meeting, onClose, onRescheduled, onError }) {
+  const [form, setForm] = useState({
+    title: meeting.title,
+    preferred_date: meeting.meeting_date || '',
+    preferred_time: meeting.meeting_time || '',
+    duration_minutes: meeting.duration_minutes || 30,
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (!form.preferred_date) { setErr('Date is required'); return }
+    setSaving(true)
+    setErr('')
+    setSuggestions([])
+    try {
+      const r = await updateMeeting(meeting.id, {
+        title: form.title,
+        preferred_date: form.preferred_date,
+        preferred_time: form.preferred_time || undefined,
+        duration_minutes: Number(form.duration_minutes),
+      })
+      onRescheduled(r.data)
+    } catch (ex) {
+      const detail = ex.response?.data?.detail || 'Reschedule failed'
+      const match = detail.match(/(?:Available slots|Try one of these free slots):\s*([\d:, ]+)\.?/i)
+      if (match) setSuggestions(match[1].split(',').map(s => s.trim()).filter(Boolean))
+      setErr(detail)
+      onError?.(detail)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+      <div className="nm-card" style={{ maxWidth: 400, width: '90%', padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+          <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>Reschedule Meeting</p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}><X size={15} /></button>
+        </div>
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={LABEL}>Title</label>
+            <input className="nm-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          </div>
+          <div>
+            <label style={LABEL}>New Preferred Date</label>
+            <input type="date" className="nm-input" value={form.preferred_date} onChange={e => { setForm(f => ({ ...f, preferred_date: e.target.value })); setSuggestions([]) }} />
+          </div>
+          <div>
+            <label style={LABEL}>Preferred Time <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+            <TimePicker
+              value={form.preferred_time}
+              onChange={v => { setForm(f => ({ ...f, preferred_time: v })); setSuggestions([]) }}
+            />
+          </div>
+          <div>
+            <label style={LABEL}>Duration (minutes)</label>
+            <input type="number" min={15} max={480} className="nm-input" value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))} />
+          </div>
+          {err && <p style={{ ...ERR, marginTop: 0 }}>{err}</p>}
+          {suggestions.length > 0 && (
+            <div style={{ background: 'rgba(224,82,82,0.08)', border: '1px solid rgba(224,82,82,0.25)', borderRadius: 10, padding: '10px 14px' }}>
+              <p style={{ fontSize: '0.6875rem', color: 'var(--error)', fontWeight: 600, marginBottom: 8 }}>Available slots:</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {suggestions.map(t => (
+                  <button key={t} type="button"
+                    onClick={() => { setForm(f => ({ ...f, preferred_time: t })); setSuggestions([]); setErr('') }}
+                    style={{ padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(67,171,146,0.4)', background: 'rgba(67,171,146,0.12)', color: 'var(--success)', fontFamily: 'inherit' }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button type="button" className="nm-btn-ghost" style={{ padding: '7px 16px' }} onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="nm-btn" style={{ padding: '7px 16px' }} disabled={saving}>
+              {saving ? 'Rescheduling…' : 'Reschedule'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -231,11 +416,14 @@ export default function Meetings() {
   const [loadingUpcoming, setLoadingUpcoming] = useState(true)
   const [teams, setTeams] = useState([])
   const [selectedTeamIds, setSelectedTeamIds] = useState([])
-  const [form, setForm] = useState({ title: '', participants: '', duration_minutes: 30, preferred_date: '' })
+  const [form, setForm] = useState({ title: '', participants: '', duration_minutes: 30, preferred_date: '', preferred_time: '' })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
+  const [timeSuggestions, setTimeSuggestions] = useState([])
   const [cancelConfirm, setCancelConfirm] = useState(null)
   const [cancelling, setCancelling] = useState(false)
+  const [rescheduleTarget, setRescheduleTarget] = useState(null)
+  const [generatingNotes, setGeneratingNotes] = useState(null)
   const { toasts, toast, dismiss } = useToast()
 
   const loadMeetings = () =>
@@ -293,15 +481,36 @@ export default function Meetings() {
         team_ids: selectedTeamIds,
         duration_minutes: Number(form.duration_minutes),
         preferred_date: form.preferred_date,
+        preferred_time: form.preferred_time || undefined,
       })
       toast('Meeting scheduled successfully', 'success')
+      setTimeSuggestions([])
       loadAll()
-      setForm({ title: '', participants: '', duration_minutes: 30, preferred_date: '' })
+      setForm({ title: '', participants: '', duration_minutes: 30, preferred_date: '', preferred_time: '' })
       setSelectedTeamIds([])
       setErrors({})
     } catch (err) {
-      toast('Failed: ' + (err.response?.data?.detail || err.message), 'error')
+      const detail = err.response?.data?.detail || err.message
+      // Parse suggestions from error message (format: "... Try one of these free slots: HH:MM, HH:MM.")
+      const match = detail.match(/(?:Available slots|Try one of these free slots):\s*([\d:, ]+)\.?/i)
+      if (match) {
+        setTimeSuggestions(match[1].split(',').map(s => s.trim()).filter(Boolean))
+      } else {
+        setTimeSuggestions([])
+      }
+      toast(detail, 'error')
     } finally { setLoading(false) }
+  }
+
+  const handleGenerateNotes = async (id) => {
+    setGeneratingNotes(id)
+    try {
+      const r = await generateMeetingNotes(id)
+      setMeetings(prev => prev.map(m => m.id === id ? { ...m, notes: r.data.notes } : m))
+      toast('Meeting notes generated and attached to Jira', 'success')
+    } catch (err) {
+      toast(err.response?.data?.detail || 'Failed to generate notes', 'error')
+    } finally { setGeneratingNotes(null) }
   }
 
   // Cancel from the table
@@ -413,10 +622,40 @@ export default function Meetings() {
                   <input type="date" className="nm-input"
                     style={errors.preferred_date ? { borderColor: 'var(--error)' } : {}}
                     value={form.preferred_date}
-                    onChange={e => { setForm(f => ({ ...f, preferred_date: e.target.value })); setErrors(v => ({ ...v, preferred_date: '' })) }}
+                    onChange={e => { setForm(f => ({ ...f, preferred_date: e.target.value })); setErrors(v => ({ ...v, preferred_date: '' })); setTimeSuggestions([]) }}
                     aria-label="Preferred date" />
                   {errors.preferred_date && <p style={ERR}>{errors.preferred_date}</p>}
                 </div>
+
+                <div>
+                  <label style={LABEL}>Preferred Time <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                  <TimePicker
+                    value={form.preferred_time}
+                    onChange={v => { setForm(f => ({ ...f, preferred_time: v })); setTimeSuggestions([]) }}
+                  />
+                </div>
+
+                {/* Time conflict suggestions */}
+                {timeSuggestions.length > 0 && (
+                  <div style={{ gridColumn: '1 / -1', background: 'rgba(224,82,82,0.08)', border: '1px solid rgba(224,82,82,0.25)', borderRadius: 10, padding: '10px 14px' }}>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--error)', fontWeight: 600, marginBottom: 8 }}>
+                      That time is taken. Pick an available slot:
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {timeSuggestions.map(t => (
+                        <button key={t} type="button"
+                          onClick={() => { setForm(f => ({ ...f, preferred_time: t })); setTimeSuggestions([]) }}
+                          style={{
+                            padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600,
+                            cursor: 'pointer', border: '1px solid rgba(67,171,146,0.4)',
+                            background: 'rgba(67,171,146,0.12)', color: 'var(--success)', fontFamily: 'inherit',
+                          }}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <button type="submit" disabled={loading} className="nm-btn" style={{ gridColumn: '1 / -1' }}>
                   {loading ? 'Scheduling…' : 'Schedule Meeting'}
@@ -431,49 +670,72 @@ export default function Meetings() {
               <table className="nm-table">
                 <thead>
                   <tr>
-                    <th>Title</th>
-                    <th>Teams</th>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Meet Link</th>
-                    <th></th>
+                    <th style={{ minWidth: 120 }}>Title</th>
+                    <th style={{ minWidth: 100 }}>Teams</th>
+                    <th style={{ minWidth: 130 }}>Date & Time</th>
+                    <th style={{ minWidth: 60 }}>Dur.</th>
+                    <th style={{ minWidth: 90 }}>Status</th>
+                    <th style={{ minWidth: 120 }}>Notes</th>
+                    <th style={{ minWidth: 120 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {meetings.length === 0 && (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
+                      <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 16px' }}>
                         No meetings yet
                       </td>
                     </tr>
                   )}
                   {meetings.map(m => (
                     <tr key={m.id}>
-                      <td>{m.title}</td>
-                      <td className="dim">{parseTeamNames(m.team_names) || '—'}</td>
-                      <td className="dim">{m.meeting_date || '—'}</td>
-                      <td className="dim">{m.meeting_time || '—'}</td>
-                      <td className="dim">{m.duration_minutes}m</td>
+                      <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.title}
+                      </td>
+                      <td className="dim" style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {parseTeamNames(m.team_names) || '—'}
+                      </td>
+                      <td className="dim" style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
+                        {formatTime(m.meeting_date, m.meeting_time)}
+                      </td>
+                      <td className="dim" style={{ whiteSpace: 'nowrap' }}>{m.duration_minutes}m</td>
                       <td><Badge label={m.status} /></td>
-                      <td>
-                        {m.meet_link
-                          ? <a href={m.meet_link} target="_blank" rel="noreferrer" className="nm-link"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <Video size={11} /> Join
-                            </a>
-                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      <td style={{ maxWidth: 160 }}>
+                        {m.notes
+                          ? <span style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.notes}</span>
+                          : <button className="nm-btn-sm" style={{ color: 'var(--success)', borderColor: 'rgba(67,171,146,0.3)', whiteSpace: 'nowrap' }}
+                              onClick={() => handleGenerateNotes(m.id)}
+                              disabled={generatingNotes === m.id}
+                              aria-label="Generate meeting notes">
+                              <FileText size={11} /> {generatingNotes === m.id ? 'Generating…' : 'Generate'}
+                            </button>
+                        }
                       </td>
                       <td>
-                        {m.status === 'Scheduled' && (
-                          <button className="nm-btn-sm"
-                            style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)' }}
-                            onClick={() => setCancelConfirm(m.id)}
-                            aria-label="Cancel meeting">
-                            <X size={11} /> Cancel
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'nowrap' }}>
+                          {m.meet_link && (
+                            <a href={m.meet_link} target="_blank" rel="noreferrer" className="nm-btn-sm"
+                              style={{ color: 'var(--success)', borderColor: 'rgba(67,171,146,0.3)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Video size={11} /> Join
+                            </a>
+                          )}
+                          {m.status === 'Scheduled' && (
+                            <button className="nm-btn-sm"
+                              style={{ color: 'var(--secondary)', borderColor: 'rgba(230,180,40,0.3)', whiteSpace: 'nowrap' }}
+                              onClick={() => setRescheduleTarget(m)}
+                              aria-label="Reschedule meeting">
+                              <RefreshCw size={11} />
+                            </button>
+                          )}
+                          {m.status === 'Scheduled' && (
+                            <button className="nm-btn-sm"
+                              style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)', whiteSpace: 'nowrap' }}
+                              onClick={() => setCancelConfirm(m.id)}
+                              aria-label="Cancel meeting">
+                              <X size={11} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -509,6 +771,21 @@ export default function Meetings() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reschedule modal (from table) */}
+      {rescheduleTarget && (
+        <RescheduleModal
+          meeting={rescheduleTarget}
+          onClose={() => setRescheduleTarget(null)}
+          onRescheduled={(updated) => {
+            setMeetings(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m))
+            setUpcoming(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m))
+            setRescheduleTarget(null)
+            toast('Meeting rescheduled successfully', 'success')
+          }}
+          onError={(msg) => toast(msg, 'error')}
+        />
       )}
 
       {/* Responsive: stack on small screens */}

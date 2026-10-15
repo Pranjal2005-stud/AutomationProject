@@ -31,11 +31,12 @@ IGNORED_CATEGORIES = {
 
 # Keywords that indicate important business emails that need tickets
 IMPORTANT_KEYWORDS = {
-    "urgent", "critical", "issue", "problem", "bug", "error", 
+    "urgent", "critical", "issue", "problem", "bug", "error", "failed", "failure",
     "support", "help", "assistance", "request", "complaint",
     "escalation", "priority", "immediate", "asap", "emergency",
     "meeting", "schedule", "appointment", "deadline",
-    "invoice", "payment", "billing", "contract", "proposal"
+    "invoice", "payment", "billing", "contract", "proposal",
+    "down", "outage", "broken", "crash", "not working", "fix", "review"
 }
 
 # Sender domains that are usually important

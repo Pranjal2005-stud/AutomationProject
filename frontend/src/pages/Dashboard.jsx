@@ -1,13 +1,16 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { Mail, Ticket, CalendarDays, CheckCircle, Clock, Activity, RefreshCw, ChevronDown } from 'lucide-react'
-import { getStats, getCharts, getRecent, pollGmail } from '../api/services'
+import { getStats, getCharts, getRecent, pollGmail, getTicketHeatmap } from '../api/services'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import Toast, { useToast } from '../components/Toast'
+import { playNamedSound } from '../components/Toast'
 import UpcomingMeetings from '../components/UpcomingMeetings'
 
 const CHART_COLORS = ['#FD630F', '#E6B428', '#43AB92', '#C0CB75', '#AAB4C2']
+const PRIORITY_COLORS = { Highest: '#E05252', High: '#FD630F', Medium: '#E6B428', Low: '#43AB92', Lowest: '#6B7A8D' }
+const TICK_STYLE = { fill: '#AAB4C2', fontSize: 11 }
 
 const ROW_BORDER = '1px solid rgba(255,255,255,0.06)'
 
@@ -15,6 +18,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [charts, setCharts] = useState(null)
   const [recent, setRecent] = useState(null)
+  const [heatmap, setHeatmap] = useState([])
   const [polling, setPolling] = useState(false)
   const [countdown, setCountdown] = useState(300)
   const [showAllEmails, setShowAllEmails] = useState(false)
@@ -25,6 +29,7 @@ export default function Dashboard() {
     getStats().then(r => setStats(r.data))
     getCharts().then(r => setCharts(r.data))
     getRecent().then(r => setRecent(r.data))
+    getTicketHeatmap().then(r => setHeatmap(r.data)).catch(() => {})
   }
 
   const resetCountdown = useCallback(() => {
@@ -38,7 +43,7 @@ export default function Dashboard() {
     const autoPoll = async () => {
       try {
         const r = await pollGmail()
-        toast(`Auto-poll — ${r.data.fetched} emails fetched, ${r.data.created} tickets created`, 'info')
+        toast(`Auto-poll — ${r.data.fetched} emails fetched, ${r.data.processed} tickets created`, 'info')
         refreshData()
       } catch {
         toast('Auto-poll failed', 'error')
@@ -64,7 +69,10 @@ export default function Dashboard() {
     resetCountdown()
     try {
       const r = await pollGmail()
-      toast(`Poll complete — ${r.data.created} tickets created, ${r.data.fetched} emails fetched`, 'success')
+      const { fetched = 0, processed = 0 } = r.data
+      if (fetched > 0) playNamedSound('new_email')
+      if (processed > 0) setTimeout(() => playNamedSound('ticket_created'), 600)
+      toast(`Poll complete — ${processed} tickets created, ${fetched} emails fetched`, 'success')
       refreshData()
     } catch {
       toast('Gmail poll failed — check credentials', 'error')
@@ -123,8 +131,8 @@ export default function Dashboard() {
             <div className="nm-card-body">
               <ResponsiveContainer width="100%" height={210}>
                 <BarChart data={charts.emails_per_day} barCategoryGap="38%">
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={26} />
+                  <XAxis dataKey="label" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                  <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} width={26} />
                   <Tooltip
                     cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                     contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10 }}
@@ -137,29 +145,25 @@ export default function Dashboard() {
 
           <div className="nm-card">
             <div className="nm-card-header">
-              <span className="nm-card-title">Tickets by Priority</span>
+              <span className="nm-card-title">Ticket Priority Heatmap</span>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Last 14 days</span>
             </div>
             <div className="nm-card-body">
               <ResponsiveContainer width="100%" height={210}>
-                <PieChart>
-                  <Pie
-                    data={charts.tickets_by_priority}
-                    dataKey="value"
-                    nameKey="label"
-                    cx="50%" cy="50%"
-                    outerRadius={78}
-                    innerRadius={38}
-                    paddingAngle={3}
-                  >
-                    {charts.tickets_by_priority.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Legend iconSize={9} iconType="circle" />
+                <BarChart data={heatmap} barCategoryGap="30%" barGap={1}>
+                  <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false}
+                    tickFormatter={v => v.slice(5)} />
+                  <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} width={26} />
                   <Tooltip
+                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                     contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10 }}
                   />
-                </PieChart>
+                  <Legend iconSize={8} iconType="circle"
+                    formatter={v => <span style={{ color: '#AAB4C2', fontSize: 11 }}>{v}</span>} />
+                  {Object.entries(PRIORITY_COLORS).map(([p, color]) => (
+                    <Bar key={p} dataKey={p} stackId="a" fill={color} radius={p === 'Lowest' ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>

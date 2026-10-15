@@ -18,5 +18,7 @@ class Meeting(Base):
     meet_link = Column(String(500), nullable=True)
     calendar_link = Column(String(500), nullable=True)
     status = Column(String(50), default="Scheduled")
+    notes = Column(Text, nullable=True)
+    notes_jira_comment_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

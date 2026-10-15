@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -18,13 +19,27 @@ settings = get_settings()
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
+def _local_tz() -> ZoneInfo:
+    return ZoneInfo(get_settings().TIMEZONE)
+
+
+def _to_utc_iso(dt_local: datetime) -> str:
+    """Convert a timezone-aware local datetime to UTC ISO string with Z suffix."""
+    dt_utc = dt_local.astimezone(ZoneInfo("UTC"))
+    return dt_utc.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
+def _local_now() -> datetime:
+    return datetime.now(_local_tz())
+
+
 class CalendarService:
     def __init__(self):
         self._service = None
 
     def _authenticate(self):
         creds = None
-        token_file = "calendar_token.json"
+        token_file = settings.CALENDAR_TOKEN_FILE
         creds_file = settings.GMAIL_CREDENTIALS_FILE
 
         if os.path.exists(token_file):
@@ -54,37 +69,66 @@ class CalendarService:
         participants: List[str],
         duration_minutes: int = 30,
         preferred_date: Optional[str] = None,
+        preferred_time: Optional[str] = None,
     ) -> Optional[datetime]:
-        start_date = (
-            datetime.strptime(preferred_date, "%Y-%m-%d")
-            if preferred_date
-            else datetime.utcnow().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        )
+        tz = _local_tz()
+        if preferred_date:
+            base = datetime.strptime(preferred_date, "%Y-%m-%d").replace(tzinfo=tz)
+        else:
+            base = (_local_now() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+
+        # Try exact preferred time first
+        if preferred_time:
+            try:
+                h, m = map(int, preferred_time.split(":"))
+                exact = base.replace(hour=h, minute=m, second=0, microsecond=0)
+                if self._is_slot_free(participants, exact, exact + timedelta(minutes=duration_minutes)):
+                    return exact
+                return None  # conflict — caller handles suggestions
+            except (ValueError, AttributeError):
+                pass
 
         for day_offset in range(5):
-            check_date = start_date + timedelta(days=day_offset)
-            if check_date.weekday() >= 5:
+            check = base + timedelta(days=day_offset)
+            if check.weekday() >= 5:
                 continue
             for hour in range(9, 17):
-                slot_start = check_date.replace(hour=hour, minute=0, second=0, microsecond=0)
-                slot_end = slot_start + timedelta(minutes=duration_minutes)
-                if self._is_slot_free(participants, slot_start, slot_end):
-                    return slot_start
-
+                slot = check.replace(hour=hour, minute=0, second=0, microsecond=0)
+                if self._is_slot_free(participants, slot, slot + timedelta(minutes=duration_minutes)):
+                    return slot
         return None
+
+    def find_free_slots_on_date(
+        self,
+        participants: List[str],
+        duration_minutes: int,
+        date_str: str,
+        limit: int = 4,
+    ) -> List[str]:
+        tz = _local_tz()
+        try:
+            base = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=tz)
+        except ValueError:
+            return []
+        free = []
+        for hour in range(9, 17):
+            slot = base.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if self._is_slot_free(participants, slot, slot + timedelta(minutes=duration_minutes)):
+                free.append(slot.strftime("%H:%M"))
+                if len(free) >= limit:
+                    break
+        return free
 
     def _is_slot_free(self, participants: List[str], start: datetime, end: datetime) -> bool:
         try:
             body = {
-                "timeMin": start.isoformat() + "Z",
-                "timeMax": end.isoformat() + "Z",
+                "timeMin": _to_utc_iso(start),
+                "timeMax": _to_utc_iso(end),
                 "items": [{"id": email} for email in participants],
             }
             result = self.service.freebusy().query(body=body).execute()
-            calendars = result.get("calendars", {})
             for email in participants:
-                busy = calendars.get(email, {}).get("busy", [])
-                if busy:
+                if result.get("calendars", {}).get(email, {}).get("busy", []):
                     return False
             return True
         except Exception as e:
@@ -101,8 +145,8 @@ class CalendarService:
         end = start + timedelta(minutes=duration_minutes)
         event = {
             "summary": title,
-            "start": {"dateTime": start.isoformat() + "Z", "timeZone": "UTC"},
-            "end": {"dateTime": end.isoformat() + "Z", "timeZone": "UTC"},
+            "start": {"dateTime": _to_utc_iso(start), "timeZone": "UTC"},
+            "end":   {"dateTime": _to_utc_iso(end),   "timeZone": "UTC"},
             "attendees": [{"email": e} for e in participants],
             "conferenceData": {
                 "createRequest": {"requestId": f"meet-{int(start.timestamp())}"}
@@ -124,13 +168,14 @@ class CalendarService:
                 .get("entryPoints", [{}])[0]
                 .get("uri", "")
             )
-            calendar_link = created.get("htmlLink", "")
+            # Store local time in DB so UI shows what the user picked
+            local_start = start.astimezone(_local_tz())
             return {
                 "calendar_event_id": created["id"],
                 "meet_link": meet_link,
-                "calendar_link": calendar_link,
-                "meeting_date": start.strftime("%Y-%m-%d"),
-                "meeting_time": start.strftime("%H:%M"),
+                "calendar_link": created.get("htmlLink", ""),
+                "meeting_date": local_start.strftime("%Y-%m-%d"),
+                "meeting_time": local_start.strftime("%H:%M"),
             }
         except HttpError as e:
             raise ExternalServiceException("Google Calendar", str(e))
@@ -158,12 +203,11 @@ class CalendarService:
         start: datetime,
         duration_minutes: int = 30,
     ) -> dict:
-        """Update an existing Google Calendar event in-place."""
         end = start + timedelta(minutes=duration_minutes)
         body = {
             "summary": title,
-            "start": {"dateTime": start.isoformat() + "Z", "timeZone": "UTC"},
-            "end": {"dateTime": end.isoformat() + "Z", "timeZone": "UTC"},
+            "start": {"dateTime": _to_utc_iso(start), "timeZone": "UTC"},
+            "end":   {"dateTime": _to_utc_iso(end),   "timeZone": "UTC"},
             "attendees": [{"email": e} for e in participants],
         }
         try:
@@ -183,12 +227,12 @@ class CalendarService:
                 .get("entryPoints", [{}])[0]
                 .get("uri", "")
             )
-            calendar_link = updated.get("htmlLink", "")
+            local_start = start.astimezone(_local_tz())
             return {
                 "meet_link": meet_link,
-                "calendar_link": calendar_link,
-                "meeting_date": start.strftime("%Y-%m-%d"),
-                "meeting_time": start.strftime("%H:%M"),
+                "calendar_link": updated.get("htmlLink", ""),
+                "meeting_date": local_start.strftime("%Y-%m-%d"),
+                "meeting_time": local_start.strftime("%H:%M"),
             }
         except HttpError as e:
             raise ExternalServiceException("Google Calendar", str(e))

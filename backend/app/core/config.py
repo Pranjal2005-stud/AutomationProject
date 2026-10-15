@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from functools import lru_cache
 
 
 class Settings(BaseSettings):
@@ -8,7 +7,7 @@ class Settings(BaseSettings):
 
     # Groq
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
 
     # Jira
     JIRA_URL: str = ""
@@ -19,9 +18,11 @@ class Settings(BaseSettings):
     # Gmail
     GMAIL_CREDENTIALS_FILE: str = "credentials.json"
     GMAIL_TOKEN_FILE: str = "token.json"
+    CALENDAR_TOKEN_FILE: str = "calendar_token.json"
 
     # Google Calendar
     GOOGLE_CALENDAR_ID: str = "primary"
+    TIMEZONE: str = "Asia/Kolkata"
 
     # App
     APP_ENV: str = "development"
@@ -32,6 +33,5 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache
 def get_settings() -> Settings:
     return Settings()

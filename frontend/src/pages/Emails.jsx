@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
-import { getEmails, createTicketForEmail, retryEmail } from '../api/services'
+import { Search, ChevronLeft, ChevronRight, Trash2, RefreshCw } from 'lucide-react'
+import { getEmails, createTicketForEmail, retryEmail, deleteEmail, pollGmail } from '../api/services'
 import Badge from '../components/Badge'
 import Select from '../components/Select'
 import Toast, { useToast } from '../components/Toast'
+import { playNamedSound } from '../components/Toast'
 
 export default function Emails() {
   const [emails, setEmails] = useState([])
@@ -12,6 +13,7 @@ export default function Emails() {
   const [skip, setSkip] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [searched, setSearched] = useState(false)
+  const [polling, setPolling] = useState(false)
   const { toasts, toast, dismiss } = useToast()
   const limit = 20
 
@@ -29,6 +31,20 @@ export default function Emails() {
   }
 
   useEffect(() => { load() }, [skip, status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePoll = async () => {
+    setPolling(true)
+    try {
+      const r = await pollGmail()
+      const { fetched = 0, processed = 0 } = r.data
+      if (fetched > 0) playNamedSound('new_email')
+      if (processed > 0) setTimeout(() => playNamedSound('ticket_created'), 600)
+      toast(`Fetched ${fetched} emails, created ${processed} tickets`, 'success')
+      load(true)
+    } catch (e) {
+      toast('Poll failed: ' + (e.response?.data?.detail || e.message), 'error')
+    } finally { setPolling(false) }
+  }
 
   const handleTicket = async (id) => {
     try {
@@ -50,6 +66,17 @@ export default function Emails() {
     }
   }
 
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this email?')) return
+    try {
+      await deleteEmail(id)
+      toast('Email deleted', 'success')
+      load()
+    } catch (e) {
+      toast('Delete failed: ' + (e.response?.data?.detail || e.message), 'error')
+    }
+  }
+
   return (
     <div className="nm-page">
       <div className="nm-page-header">
@@ -57,7 +84,13 @@ export default function Emails() {
           <h1 className="nm-page-title">Emails</h1>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2 }}>Incoming email processing queue</p>
         </div>
+        <button onClick={handlePoll} disabled={polling} className="nm-btn" aria-label="Fetch new emails">
+          <RefreshCw size={13} style={{ animation: polling ? 'spin 1s linear infinite' : 'none' }} />
+          {polling ? 'Fetching…' : 'Fetch Emails'}
+        </button>
       </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       <div className="nm-filter-bar" style={{ marginBottom: 20 }}>
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 280 }}>
@@ -117,6 +150,9 @@ export default function Emails() {
                           Retry
                         </button>
                       )}
+                      <button onClick={() => handleDelete(e.id)} className="nm-btn-sm" style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)' }} aria-label={`Delete email ${e.id}`}>
+                        <Trash2 size={11} />
+                      </button>
                     </div>
                   </td>
                 </tr>

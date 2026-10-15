@@ -14,10 +14,15 @@ const map = {
   Lowest:     'badge-lowest',
 }
 
+const display = {
+  LLM_Failed:  'LLM Failed',
+  Jira_Failed: 'Jira Failed',
+}
+
 export default function Badge({ label }) {
   return (
     <span className={`nm-badge ${map[label] || 'badge-gray'}`}>
-      {label}
+      {display[label] || label}
     </span>
   )
 }

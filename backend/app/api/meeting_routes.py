@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -54,6 +54,56 @@ def _resolve_attendees(participants: List[str], team_ids: List[int], db: Session
 
     _validate_emails(list(emails))
     return list(emails), team_names
+
+
+def _db_busy_intervals(db: Session, date: str, exclude_id: int = None) -> list:
+    """Return list of (start_minutes, end_minutes) for all scheduled meetings on date."""
+    base = datetime.strptime(date, "%Y-%m-%d")
+    q = db.query(Meeting).filter(Meeting.status == "Scheduled", Meeting.meeting_date == date)
+    if exclude_id:
+        q = q.filter(Meeting.id != exclude_id)
+    intervals = []
+    for c in q.all():
+        if not c.meeting_time:
+            continue
+        c_h, c_m = map(int, c.meeting_time.split(":"))
+        c_start = base.replace(hour=c_h, minute=c_m)
+        c_end = c_start + timedelta(minutes=c.duration_minutes)
+        intervals.append((c_start, c_end, c.title))
+    return intervals
+
+
+def _check_db_conflict(db: Session, date: str, time: str, duration: int, attendees: List[str], exclude_id: int = None):
+    """Raises 409 AppException if any scheduled meeting on `date` overlaps with time+duration."""
+    try:
+        req_h, req_m = map(int, time.split(":"))
+        base = datetime.strptime(date, "%Y-%m-%d")
+        req_start = base.replace(hour=req_h, minute=req_m)
+        req_end = req_start + timedelta(minutes=duration)
+        intervals = _db_busy_intervals(db, date, exclude_id)
+        for c_start, c_end, c_title in intervals:
+            if req_start < c_end and req_end > c_start:
+                # Get Google Calendar free slots, then filter out DB-occupied ones
+                raw = calendar_service.find_free_slots_on_date(attendees, duration, date)
+                suggestions = [
+                    s for s in raw
+                    if not any(
+                        datetime.strptime(date + " " + s, "%Y-%m-%d %H:%M") < ie
+                        and datetime.strptime(date + " " + s, "%Y-%m-%d %H:%M") + timedelta(minutes=duration) > ib
+                        for ib, ie, _ in intervals
+                    )
+                ]
+                msg = (
+                    f"A meeting '{c_title}' is already scheduled at {c_start.strftime('%H:%M')} "
+                    f"on {date} (ends {c_end.strftime('%H:%M')}). Please pick a different time."
+                )
+                if suggestions:
+                    msg += f" Available slots: {', '.join(suggestions)}."
+                raise AppException(msg, status_code=409)
+    except AppException:
+        raise
+    except Exception:
+        pass
 
 
 @router.get("/upcoming", response_model=List[UpcomingMeetingResponse])
@@ -120,12 +170,26 @@ def schedule_meeting(payload: MeetingCreate, db: Session = Depends(get_db)):
 
     attendees, team_names = _resolve_attendees(payload.participants, payload.team_ids, db)
 
+    # Check DB-level conflict: same date + overlapping time
+    if payload.preferred_date and payload.preferred_time:
+        _check_db_conflict(db, payload.preferred_date, payload.preferred_time, payload.duration_minutes, attendees)
+
     slot = calendar_service.find_free_slot(
         participants=attendees,
         duration_minutes=payload.duration_minutes,
         preferred_date=payload.preferred_date,
+        preferred_time=payload.preferred_time,
     )
     if not slot:
+        # preferred_time was set but slot is busy on Google Calendar
+        if payload.preferred_time and payload.preferred_date:
+            suggestions = calendar_service.find_free_slots_on_date(
+                attendees, payload.duration_minutes, payload.preferred_date
+            )
+            msg = f"The time {payload.preferred_time} on {payload.preferred_date} is not available."
+            if suggestions:
+                msg += f" Try one of these free slots: {', '.join(suggestions)}."
+            raise AppException(msg, status_code=409)
         raise AppException("No common free slot found for participants", status_code=409)
 
     event = calendar_service.create_event(
@@ -179,7 +243,44 @@ def cancel_meeting(meeting_id: int, db: Session = Depends(get_db)):
     return MeetingRepository(db).update(meeting)
 
 
-@router.put("/{meeting_id}", response_model=MeetingResponse)
+@router.post("/{meeting_id}/generate-notes", response_model=MeetingResponse)
+def generate_meeting_notes(meeting_id: int, db: Session = Depends(get_db)):
+    from app.services.llm_service import llm_service
+    from app.services.jira_service import jira_service as _jira
+    from app.models.jira_ticket import JiraTicket
+    import json as _json
+
+    repo = MeetingRepository(db)
+    meeting = repo.get(meeting_id)
+    if not meeting:
+        raise NotFoundException("Meeting", meeting_id)
+
+    try:
+        participants = _json.loads(meeting.participants) if meeting.participants else []
+    except Exception:
+        participants = []
+
+    notes = llm_service.generate_meeting_notes(
+        title=meeting.title,
+        date=meeting.meeting_date,
+        time=meeting.meeting_time,
+        duration=meeting.duration_minutes,
+        participants=participants,
+    )
+    meeting.notes = notes
+
+    # Attach to the most recent Jira ticket as a comment
+    ticket = db.query(JiraTicket).order_by(JiraTicket.created_at.desc()).first()
+    if ticket and ticket.jira_key:
+        comment_body = f"Meeting Notes — {meeting.title} ({meeting.meeting_date})\n\n{notes}"
+        comment_id = _jira.add_comment(ticket.jira_key, comment_body)
+        if comment_id:
+            meeting.notes_jira_comment_id = str(comment_id)
+
+    return repo.update(meeting)
+
+
+@router.post("/{meeting_id}/generate-notes", response_model=MeetingResponse)
 def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depends(get_db)):
     repo = MeetingRepository(db)
     meeting = repo.get(meeting_id)
@@ -199,10 +300,15 @@ def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depend
 
     attendees, team_names = _resolve_attendees(participants, team_ids, db)
 
+    preferred_time = payload.preferred_time or meeting.meeting_time
+    if preferred_date and preferred_time:
+        _check_db_conflict(db, preferred_date, preferred_time, duration, attendees, exclude_id=meeting_id)
+
     slot = calendar_service.find_free_slot(
         participants=attendees,
         duration_minutes=duration,
         preferred_date=preferred_date,
+        preferred_time=preferred_time,
     )
     if not slot:
         raise AppException("No common free slot found for updated participants", status_code=409)

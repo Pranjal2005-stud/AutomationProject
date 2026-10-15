@@ -25,6 +25,8 @@ build/
 .venv/
 venv/
 env/
+*.sqlite3
+*.db
 
 # ========================
 # Logs
@@ -45,6 +47,7 @@ node_modules/
 frontend/dist/
 frontend/.env
 frontend/.env.*
+frontend/.env.local
 
 # ========================
 # IDE & OS
@@ -53,3 +56,6 @@ frontend/.env.*
 .idea/
 *.DS_Store
 Thumbs.db
+*.swp
+*.swo
+.cache/

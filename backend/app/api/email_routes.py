@@ -94,6 +94,13 @@ def create_ticket_for_email(email_id: int, db: Session = Depends(get_db)):
     return {"jira_key": result["jira_key"], "jira_url": result["jira_url"]}
 
 
+@router.delete("/{email_id}", status_code=204)
+def delete_email(email_id: int, db: Session = Depends(get_db)):
+    repo = EmailRepository(db)
+    if not repo.delete(email_id):
+        raise NotFoundException("Email", email_id)
+
+
 @router.post("/{email_id}/retry", response_model=dict)
 def retry_email(email_id: int, db: Session = Depends(get_db)):
     """Reset a failed email back to Pending for reprocessing."""
