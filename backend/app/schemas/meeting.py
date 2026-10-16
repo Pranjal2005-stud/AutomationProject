@@ -34,6 +34,9 @@ class MeetingResponse(BaseModel):
     calendar_link: Optional[str] = None
     status: str
     notes: Optional[str] = None
+    notes_jira_comment_id: Optional[str] = None
+    notes_jira_key: Optional[str] = None
+    notes_jira_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

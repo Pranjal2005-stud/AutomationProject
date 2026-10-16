@@ -506,8 +506,8 @@ export default function Meetings() {
     setGeneratingNotes(id)
     try {
       const r = await generateMeetingNotes(id)
-      setMeetings(prev => prev.map(m => m.id === id ? { ...m, notes: r.data.notes } : m))
-      toast('Meeting notes generated and attached to Jira', 'success')
+      setMeetings(prev => prev.map(m => m.id === id ? { ...m, notes: r.data.notes, notes_jira_url: r.data.notes_jira_url } : m))
+      toast(r.data.notes_jira_url ? 'Notes generated and attached to Jira' : 'Meeting notes generated', 'success')
     } catch (err) {
       toast(err.response?.data?.detail || 'Failed to generate notes', 'error')
     } finally { setGeneratingNotes(null) }
@@ -702,7 +702,16 @@ export default function Meetings() {
                       <td><Badge label={m.status} /></td>
                       <td style={{ maxWidth: 160 }}>
                         {m.notes
-                          ? <span style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.notes}</span>
+                          ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.notes}</span>
+                              {m.notes_jira_url && (
+                                <a href={m.notes_jira_url} target="_blank" rel="noreferrer"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.625rem', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none', opacity: 0.85 }}
+                                >
+                                  <FileText size={9} /> View in Jira
+                                </a>
+                              )}
+                            </div>
                           : <button className="nm-btn-sm" style={{ color: 'var(--success)', borderColor: 'rgba(67,171,146,0.3)', whiteSpace: 'nowrap' }}
                               onClick={() => handleGenerateNotes(m.id)}
                               disabled={generatingNotes === m.id}

@@ -269,18 +269,28 @@ def generate_meeting_notes(meeting_id: int, db: Session = Depends(get_db)):
     )
     meeting.notes = notes
 
-    # Attach to the most recent Jira ticket as a comment
-    ticket = db.query(JiraTicket).order_by(JiraTicket.created_at.desc()).first()
-    if ticket and ticket.jira_key:
+    # Attach to a Jira ticket only if one is directly linked via email
+    from app.models.email import Email
+    linked_ticket = (
+        db.query(JiraTicket)
+        .join(Email, JiraTicket.email_id == Email.id, isouter=True)
+        .filter(JiraTicket.jira_key.isnot(None))
+        .order_by(JiraTicket.created_at.desc())
+        .first()
+    )
+    if linked_ticket and linked_ticket.jira_key and "MOCK-" not in linked_ticket.jira_key:
         comment_body = f"Meeting Notes — {meeting.title} ({meeting.meeting_date})\n\n{notes}"
-        comment_id = _jira.add_comment(ticket.jira_key, comment_body)
+        comment_id = _jira.add_comment(linked_ticket.jira_key, comment_body)
         if comment_id:
             meeting.notes_jira_comment_id = str(comment_id)
+            meeting.notes_jira_key = linked_ticket.jira_key
+            from app.core.config import get_settings as _gs
+            meeting.notes_jira_url = f"{_gs().JIRA_URL.rstrip('/')}/browse/{linked_ticket.jira_key}"
 
     return repo.update(meeting)
 
 
-@router.post("/{meeting_id}/generate-notes", response_model=MeetingResponse)
+@router.put("/{meeting_id}", response_model=MeetingResponse)
 def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depends(get_db)):
     repo = MeetingRepository(db)
     meeting = repo.get(meeting_id)
