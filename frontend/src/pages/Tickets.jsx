@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ExternalLink, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
-import { getTickets, getTicketJiraUrl, syncTicketsFromJira, updateTicketPriority } from '../api/services'
+import { ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { getTickets, getTicketJiraUrl, syncTicketsFromJira, updateTicketPriority, deleteTicket, syncTicket } from '../api/services'
 import Badge from '../components/Badge'
 import Select from '../components/Select'
 import Toast, { useToast } from '../components/Toast'
@@ -17,6 +17,9 @@ export default function Tickets() {
   const [sort, setSort] = useState('desc')
   const [syncing, setSyncing] = useState(false)
   const [updatingId, setUpdatingId] = useState(null)
+  const [syncingId, setSyncingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const { toasts, toast, dismiss } = useToast()
 
   const load = (p = page) =>
@@ -32,7 +35,7 @@ export default function Tickets() {
     setSyncing(true)
     try {
       const r = await syncTicketsFromJira()
-      toast(`Synced ${r.data.synced} new, updated ${r.data.updated} tickets`, 'success')
+      toast(`Synced ${r.data.synced} new, updated ${r.data.updated}, removed ${r.data.deleted} tickets`, 'success')
       load(0); setPage(0)
     } catch {
       toast('Jira sync failed — check credentials', 'error')
@@ -44,13 +47,41 @@ export default function Tickets() {
   const handlePriorityChange = async (ticketId, newPriority) => {
     setUpdatingId(ticketId)
     try {
-      await updateTicketPriority(ticketId, newPriority)
-      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, priority: newPriority } : t))
+      const r = await updateTicketPriority(ticketId, newPriority)
+      // Response includes fresh status pulled from Jira
+      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, priority: r.data.priority, status: r.data.status } : t))
       toast(`Priority updated to ${newPriority}`, 'success')
     } catch {
       toast('Failed to update priority', 'error')
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  const handleSyncRow = async (ticketId) => {
+    setSyncingId(ticketId)
+    try {
+      const r = await syncTicket(ticketId)
+      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: r.data.status, priority: r.data.priority } : t))
+    } catch {
+      toast('Sync failed', 'error')
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    setDeletingId(id)
+    try {
+      await deleteTicket(id)
+      setTickets(prev => prev.filter(t => t.id !== id))
+      setTotal(prev => prev - 1)
+      toast('Ticket deleted', 'success')
+    } catch {
+      toast('Failed to delete ticket', 'error')
+    } finally {
+      setDeletingId(null)
+      setConfirmDeleteId(null)
     }
   }
 
@@ -143,6 +174,40 @@ export default function Tickets() {
                       {t.jira_key && (
                         <button onClick={() => openJira(t.id)} className="nm-btn-sm" aria-label={`Open ${t.jira_key} in Jira`}>
                           <ExternalLink size={11} /> Open
+                        </button>
+                      )}
+                      {t.jira_key && !t.jira_key.startsWith('MOCK-') && (
+                        <button
+                          onClick={() => handleSyncRow(t.id)}
+                          className="nm-btn-sm"
+                          disabled={syncingId === t.id}
+                          aria-label={`Sync status for ${t.jira_key}`}
+                          title="Sync status from Jira"
+                        >
+                          <RefreshCw size={11} style={{ animation: syncingId === t.id ? 'spin 1s linear infinite' : 'none' }} />
+                        </button>
+                      )}
+                      {confirmDeleteId === t.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Sure?</span>
+                          <button
+                            className="nm-btn-sm"
+                            style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.4)', background: 'rgba(224,82,82,0.1)' }}
+                            onClick={() => handleDelete(t.id)}
+                            disabled={deletingId === t.id}
+                          >
+                            {deletingId === t.id ? '…' : 'Yes'}
+                          </button>
+                          <button className="nm-btn-sm" onClick={() => setConfirmDeleteId(null)}>No</button>
+                        </div>
+                      ) : (
+                        <button
+                          className="nm-btn-sm"
+                          style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)' }}
+                          onClick={() => setConfirmDeleteId(t.id)}
+                          aria-label={`Delete ticket ${t.id}`}
+                        >
+                          <Trash2 size={11} />
                         </button>
                       )}
                     </div>

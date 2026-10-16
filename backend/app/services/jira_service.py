@@ -144,6 +144,22 @@ class JiraService:
             logger.error(f"Failed to add Jira comment to {jira_key}: {e}")
             return None
 
+    def delete_issue(self, jira_key: str) -> None:
+        """Delete a Jira issue. No-op for mock keys."""
+        if "MOCK-" in jira_key:
+            logger.info(f"Mock Jira issue deleted: {jira_key}")
+            return
+        try:
+            response = requests.delete(
+                self._url(f"issue/{jira_key}"),
+                auth=self._auth, headers=self._headers, timeout=10,
+            )
+            response.raise_for_status()
+            logger.info(f"Jira issue deleted: {jira_key}")
+        except Exception as e:
+            logger.error(f"Failed to delete Jira issue {jira_key}: {e}")
+            raise ExternalServiceException("Jira", str(e))
+
     def get_issue(self, jira_key: str) -> Optional[dict]:
         if "MOCK-" in jira_key:
             return {"key": jira_key, "fields": {"summary": "Mock ticket", "status": {"name": "Open"}}}

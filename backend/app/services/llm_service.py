@@ -26,7 +26,7 @@ Generate a concise meeting summary with:
 
 Keep it under 300 words. Plain text only, no markdown headers."""
 
-EXTRACTION_PROMPT = """You are an IT operations assistant. Analyze the email below and extract structured ticket information.
+EXTRACTION_PROMPT = """You are an IT helpdesk triage assistant. Analyze the email and extract structured ticket information.
 
 Email Subject: {subject}
 Email Body: {body}
@@ -35,15 +35,34 @@ Respond ONLY with a valid JSON object in this exact format:
 {{
   "summary": "short one-line summary of the issue",
   "description": "detailed description of the problem",
-  "priority": "High",
-  "issue_type": "Bug",
+  "priority": "Medium",
+  "issue_type": "Task",
   "category": "IT",
-  "confidence": 0.95
+  "confidence": 0.85
 }}
 
-Rules:
-- priority must be one of: Highest, High, Medium, Low, Lowest
-- issue_type must be one of: Task, Feature, Epic
+Priority rules — choose carefully based on actual business impact:
+- Highest: Complete system/service outage affecting all users, data loss, active security breach, payment system down
+- High: Major feature broken for many users, significant performance degradation, security vulnerability (not yet exploited), critical deadline at risk
+- Medium: Feature partially broken, affects some users, workaround exists, moderate inconvenience, integration issues
+- Low: Minor bug, cosmetic issue, affects one or few users, easy workaround available, non-urgent request
+- Lowest: Typo, UI spacing/alignment, documentation correction, nice-to-have suggestion, no functional impact
+
+Examples:
+- "Minor UI alignment issue on dashboard" → Lowest
+- "Typo in footer" → Lowest
+- "Suggestion to add dark mode" → Lowest
+- "Non-urgent documentation correction" → Low
+- "Unable to export report (workaround: download CSV)" → Low
+- "Some users cannot login intermittently" → Medium
+- "Payment gateway returning errors for 20% of transactions" → High
+- "Production database is down" → Highest
+
+Do NOT default to High or Highest unless the email clearly describes severe, widespread, or time-critical impact.
+If the sender says "minor", "small", "cosmetic", "suggestion", "when you get a chance", or "no urgency" — use Low or Lowest.
+
+Other rules:
+- issue_type must be one of: Bug, Task, Feature, Epic
 - category must be one of: IT, HR, Finance, Operations, Security, Other
 - confidence is a float between 0 and 1
 - Return ONLY the JSON object, no explanation, no markdown"""

@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -15,16 +16,25 @@ router = APIRouter(prefix="/emails", tags=["Emails"])
 def list_emails(
     status: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[date] = Query(None, description="Filter emails received on or after this date (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Filter emails received on or before this date (YYYY-MM-DD)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
 ):
     repo = EmailRepository(db)
+    q = db.query(Email)
     if search:
-        return repo.search(search, skip, limit)
+        term = f"%{search}%"
+        from sqlalchemy import or_
+        q = q.filter(or_(Email.subject.ilike(term), Email.sender_email.ilike(term)))
     if status:
-        return repo.get_by_status(status, skip, limit)
-    return repo.get_all(skip, limit)
+        q = q.filter(Email.status == status)
+    if date_from:
+        q = q.filter(Email.received_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to:
+        q = q.filter(Email.received_at <= datetime.combine(date_to, datetime.max.time()))
+    return q.order_by(Email.received_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.post("/", response_model=EmailResponse, status_code=201)

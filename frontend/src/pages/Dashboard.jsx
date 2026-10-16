@@ -116,7 +116,7 @@ export default function Dashboard() {
         <StatCard title="Total Emails"  value={stats?.total_emails}       icon={Mail}         iconColor="#FD630F" />
         <StatCard title="Pending"       value={stats?.pending_emails}     icon={Clock}        iconColor="#E6B428" />
         <StatCard title="Processed"     value={stats?.processed_emails}   icon={CheckCircle}  iconColor="#43AB92" />
-        <StatCard title="Tickets"       value={stats?.tickets_created}    icon={Ticket}       iconColor="#C0CB75" />
+        <StatCard title="Live Tickets"  value={stats?.tickets_created}    icon={Ticket}       iconColor="#C0CB75" />
         <StatCard title="Upcoming"      value={stats?.meetings_scheduled} icon={CalendarDays} iconColor="#43AB92" />
         <StatCard title="Today"         value={stats?.todays_activity}    icon={Activity}     iconColor="#E6B428" />
       </div>

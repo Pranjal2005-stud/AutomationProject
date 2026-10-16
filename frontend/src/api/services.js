@@ -11,6 +11,8 @@ export const createTicket = (data) => api.post('/tickets/', data)
 export const getTicketJiraUrl = (id) => api.get(`/tickets/${id}/jira-url`)
 export const syncTicketsFromJira = () => api.post('/tickets/sync')
 export const updateTicketPriority = (id, priority) => api.patch(`/tickets/${id}/priority`, { priority })
+export const syncTicket = (id) => api.post(`/tickets/${id}/sync`)
+export const deleteTicket = (id) => api.delete(`/tickets/${id}`)
 export const getTicketHeatmap = (days = 14) => api.get('/tickets/priority-heatmap', { params: { days } })
 
 // Emails

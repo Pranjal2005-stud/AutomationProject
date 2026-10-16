@@ -10,10 +10,14 @@ export default function Emails() {
   const [emails, setEmails] = useState([])
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [skip, setSkip] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [searched, setSearched] = useState(false)
   const [polling, setPolling] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const { toasts, toast, dismiss } = useToast()
   const limit = 20
 
@@ -23,6 +27,8 @@ export default function Emails() {
     const params = { skip: effectiveSkip, limit }
     if (search) params.search = search
     if (status) params.status = status
+    if (dateFrom) params.date_from = dateFrom
+    if (dateTo) params.date_to = dateTo
     getEmails(params).then(r => {
       setEmails(r.data)
       setHasMore(r.data.length === limit)
@@ -30,7 +36,7 @@ export default function Emails() {
     })
   }
 
-  useEffect(() => { load() }, [skip, status]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [skip, status, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePoll = async () => {
     setPolling(true)
@@ -66,15 +72,17 @@ export default function Emails() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this email?')) return
+  const handleDelete = async () => {
+    if (!deleteConfirmId) return
+    setDeleting(true)
     try {
-      await deleteEmail(id)
+      await deleteEmail(deleteConfirmId)
       toast('Email deleted', 'success')
+      setDeleteConfirmId(null)
       load()
     } catch (e) {
       toast('Delete failed: ' + (e.response?.data?.detail || e.message), 'error')
-    }
+    } finally { setDeleting(false) }
   }
 
   return (
@@ -114,6 +122,35 @@ export default function Emails() {
             ...['Pending', 'Processing', 'Processed', 'LLM_Failed', 'Jira_Failed'].map(s => ({ value: s, label: s }))
           ]}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="date"
+            className="nm-input"
+            style={{ width: 140 }}
+            value={dateFrom}
+            onChange={e => { setDateFrom(e.target.value); setSkip(0) }}
+            aria-label="From date"
+          />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>to</span>
+          <input
+            type="date"
+            className="nm-input"
+            style={{ width: 140 }}
+            value={dateTo}
+            onChange={e => { setDateTo(e.target.value); setSkip(0) }}
+            aria-label="To date"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              className="nm-btn-ghost"
+              style={{ padding: '6px 10px', fontSize: '0.6875rem' }}
+              onClick={() => { setDateFrom(''); setDateTo(''); setSkip(0) }}
+              aria-label="Clear date filter"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <button onClick={() => load(true)} className="nm-btn" aria-label="Run search">Search</button>
       </div>
 
@@ -150,7 +187,7 @@ export default function Emails() {
                           Retry
                         </button>
                       )}
-                      <button onClick={() => handleDelete(e.id)} className="nm-btn-sm" style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)' }} aria-label={`Delete email ${e.id}`}>
+                      <button onClick={() => setDeleteConfirmId(e.id)} className="nm-btn-sm" style={{ color: 'var(--error)', borderColor: 'rgba(224,82,82,0.3)' }} aria-label={`Delete email ${e.id}`}>
                         <Trash2 size={11} />
                       </button>
                     </div>
@@ -186,6 +223,23 @@ export default function Emails() {
           Next <ChevronRight size={14} />
         </button>
       </div>
+
+      {deleteConfirmId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div className="nm-card" style={{ maxWidth: 380, width: '90%', padding: 24 }}>
+            <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)', marginBottom: 8 }}>Delete this email?</p>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.6 }}>
+              This will permanently remove the email from the system. This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="nm-btn-ghost" style={{ padding: '7px 16px' }} onClick={() => setDeleteConfirmId(null)} disabled={deleting}>Cancel</button>
+              <button className="nm-btn" style={{ padding: '7px 16px', background: 'var(--error)' }} onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast toasts={toasts} dismiss={dismiss} />
     </div>

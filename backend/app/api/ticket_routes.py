@@ -62,11 +62,12 @@ def get_priority_heatmap(days: int = 14, db: Session = Depends(get_db)):
 
 @router.post("/sync", response_model=dict)
 def sync_tickets_from_jira(db: Session = Depends(get_db)):
-    """Pull all tickets from Jira project and upsert into local DB."""
+    """Full two-way sync: upsert tickets from Jira, delete local tickets no longer in Jira."""
     repo = JiraTicketRepository(db)
-    synced, skipped = 0, 0
+    synced, updated, deleted = 0, 0, 0
     start_at = 0
     max_results = 50
+    live_jira_keys: set = set()
 
     while True:
         issues = jira_service.search_issues(start_at=start_at, max_results=max_results)
@@ -75,12 +76,14 @@ def sync_tickets_from_jira(db: Session = Depends(get_db)):
         for issue in issues:
             fields = issue.get("fields", {})
             jira_key = issue["key"]
+            live_jira_keys.add(jira_key)
             existing = repo.get_by_jira_key(jira_key)
             if existing:
-                # Update status
                 existing.status = fields.get("status", {}).get("name", existing.status)
+                existing.priority = fields.get("priority", {}).get("name", existing.priority)
+                existing.summary = fields.get("summary", existing.summary)
                 db.commit()
-                skipped += 1
+                updated += 1
             else:
                 ticket = JiraTicket(
                     jira_key=jira_key,
@@ -100,7 +103,23 @@ def sync_tickets_from_jira(db: Session = Depends(get_db)):
             break
         start_at += max_results
 
-    return {"synced": synced, "updated": skipped}
+    # Delete local tickets that no longer exist in Jira (skip MOCK keys)
+    if live_jira_keys:
+        orphans = (
+            db.query(JiraTicket)
+            .filter(
+                JiraTicket.jira_key.isnot(None),
+                ~JiraTicket.jira_key.like("MOCK-%"),
+                JiraTicket.jira_key.notin_(live_jira_keys),
+            )
+            .all()
+        )
+        for orphan in orphans:
+            db.delete(orphan)
+            deleted += 1
+        db.commit()
+
+    return {"synced": synced, "updated": updated, "deleted": deleted}
 
 
 @router.post("/", response_model=JiraTicketResponse, status_code=201)
@@ -132,14 +151,47 @@ def update_ticket_priority(ticket_id: int, payload: dict, db: Session = Depends(
     if not new_priority:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="priority is required")
-    # Update in Jira
+    # Update in Jira and pull back fresh status
     if ticket.jira_key and "MOCK-" not in ticket.jira_key:
         jira_service.update_priority(ticket.jira_key, new_priority)
-    # Update locally
+        fresh = jira_service.get_issue(ticket.jira_key)
+        if fresh:
+            ticket.status = fresh.get("fields", {}).get("status", {}).get("name", ticket.status)
     ticket.priority = new_priority
     db.commit()
     db.refresh(ticket)
     return ticket
+
+
+@router.post("/{ticket_id}/sync", response_model=JiraTicketResponse)
+def sync_ticket(ticket_id: int, db: Session = Depends(get_db)):
+    """Pull fresh status and priority from Jira for a single ticket."""
+    ticket = JiraTicketRepository(db).get(ticket_id)
+    if not ticket:
+        raise NotFoundException("JiraTicket", ticket_id)
+    if ticket.jira_key and "MOCK-" not in ticket.jira_key:
+        fresh = jira_service.get_issue(ticket.jira_key)
+        if fresh:
+            fields = fresh.get("fields", {})
+            ticket.status = fields.get("status", {}).get("name", ticket.status)
+            ticket.priority = fields.get("priority", {}).get("name", ticket.priority)
+            db.commit()
+            db.refresh(ticket)
+    return ticket
+
+
+@router.delete("/{ticket_id}", status_code=204)
+def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
+    ticket = JiraTicketRepository(db).get(ticket_id)
+    if not ticket:
+        raise NotFoundException("JiraTicket", ticket_id)
+    if ticket.jira_key and "MOCK-" not in ticket.jira_key:
+        try:
+            jira_service.delete_issue(ticket.jira_key)
+        except Exception:
+            pass  # Delete locally even if Jira call fails
+    db.delete(ticket)
+    db.commit()
 
 
 @router.get("/{ticket_id}", response_model=JiraTicketResponse)
